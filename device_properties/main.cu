@@ -18,18 +18,19 @@ int main() {
 
         printf("Device number: %d\n", i);
         printf("\tDevice name: %s\n", prop.name);
+        printf("\tTotal Global Memory: %ld\n", prop.totalGlobalMem);
         printf("\tMemory Clock Rate (KHz): %d\n", prop.memoryClockRate);
         printf("\tMemory Bus Width (bits): %d\n", prop.memoryBusWidth);
         printf("\tPeak Memory Bandwidth (GB/s): %f\n", 2.0f * prop.memoryClockRate*(prop.memoryBusWidth/8.0f)/1.0e6);
-        
         printf("\n");
-
-        printf("Device major version: %d; Device minor version: %d\n", prop.major, prop.minor);
-        printf("Max blocks per multiprocessor: %d\n", prop.maxBlocksPerMultiProcessor);
-        printf("Max threads per multiprocessor: %d\n", prop.maxThreadsPerBlock);
-        printf("Max blocks per multiprocessor: %d\n", prop.maxBlocksPerMultiProcessor);
-        printf("Max grid size: %d\n", *prop.maxGridSize);
-        printf("Max threads dims: %d\n", *prop.maxThreadsDim);
+        printf("\tDevice major version: %d; Device minor version: %d\n", prop.major, prop.minor);
+        printf("\tWarp size: %d\n", prop.warpSize);
+        printf("\tMultiprocessor count: %d\n", prop.multiProcessorCount);
+        printf("\tMax blocks per multiprocessor: %d\n", prop.maxBlocksPerMultiProcessor);
+        printf("\tMax threads per multiprocessor: %d\n", prop.maxThreadsPerBlock);
+        printf("\tMax blocks per multiprocessor: %d\n", prop.maxBlocksPerMultiProcessor);
+        printf("\tMax grid size: %d\n", *prop.maxGridSize);
+        printf("\tMax threads dims: %d\n", *prop.maxThreadsDim);
     }
 
     return 0;
