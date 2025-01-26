@@ -1,5 +1,5 @@
 /**
- * A C application that uses CUDA to generate a Mandelbrot image.
+ * A CUDA application to generate a Mandelbrot image.
  * Designed to work on my NVIDIA GeForce GTX 1650
  */
 
@@ -65,9 +65,12 @@ void get_color(int t, uint8_t* r, uint8_t* g, uint8_t* b) {
 }
 
 __global__
-void mandelbrot(uint8_t* device_image, int width, int height, int max_iters) {
+void mandelbrot(uint8_t* device_image, int width, int height, int max_iters, float scale) {
     int x = threadIdx.x + blockIdx.x*blockDim.x;
     int y = threadIdx.y + blockIdx.y*blockDim.y;
+
+    float scaled_x = scale * (float)(height/2.0f - (float)x)/(height/2.0f);
+    float scaled_y = scale * (float)(height/2.0f - (float)y)/(height/2.0f);
 
     int index = (y * width + x) * 3;
 
@@ -76,11 +79,8 @@ void mandelbrot(uint8_t* device_image, int width, int height, int max_iters) {
         uint8_t g;
         uint8_t b;
 
-        float u = (float)x / height;
-        float v = (float)y / height;
-
-        Complex z = {0.0f, 0.0f};
-        Complex c = {2.5f * (u - 0.5f) - 1.4f, 2.5f * (v - 0.5f)};
+        Complex c = {scaled_x, scaled_y};
+        Complex z = {0.0, 0.0};
 
         int i = 0;
         while (i < max_iters && complex_magnitude(&z) < 32.0f) {
@@ -100,11 +100,49 @@ void mandelbrot(uint8_t* device_image, int width, int height, int max_iters) {
     }
 }
 
+__global__
+void julia(uint8_t* device_image, int width, int height, int max_iters, float scale) {
+    int x = threadIdx.x + blockIdx.x*blockDim.x;
+    int y = threadIdx.y + blockIdx.y*blockDim.y;
+
+    float scaled_x = scale * (float)(height/2.0f - (float)x)/(height/2.0f);
+    float scaled_y = scale * (float)(height/2.0f - (float)y)/(height/2.0f);
+
+    int index = (y * width + x) * 3;
+
+    if (x < width && y < height) {
+        uint8_t r;
+        uint8_t g;
+        uint8_t b;
+
+        Complex z = {scaled_x + 1.05f, scaled_y};
+        Complex c = {-0.8, 0.16};
+
+        int i = 0;
+        while (i < max_iters && complex_magnitude(&z) < 32.0f) {
+            Complex zsq;
+            complex_multiply(&z, &z, &zsq);
+            complex_add(&zsq, &c, &z);
+            i += 1;
+        }
+        
+        float t = (float)i - logf(logf(complex_magnitude(&z)));
+
+        get_color((int)t, &r, &g, &b);
+
+        device_image[index] = r; 
+        device_image[index + 1] = g;
+        device_image[index + 2] = b; 
+    }
+}
 
 int main() {
     const int width = 1920;
     const int height = 1080;
     const int max_iterations = 255;
+
+    const float mandelbrot_scale = 0.95;
+    //const float julia_scale = 1.15;
 
     uint8_t* host_img = (uint8_t*)malloc(width * height * 3);
     if (!host_img) {
@@ -118,7 +156,8 @@ int main() {
     dim3 blocks(32, 32); // max 1024 threads per block on my setup
     dim3 grid(ceil((float)width / 32), ceil((float)height / 32));
 
-    mandelbrot<<<grid, blocks>>>(device_img, width, height, max_iterations);
+    mandelbrot<<<grid, blocks>>>(device_img, width, height, max_iterations, mandelbrot_scale);
+    //julia<<<grid, blocks>>>(device_img, width, height, max_iterations, julia_scale);
     cudaDeviceSynchronize();
 
     cudaMemcpy(host_img, device_img, width * height * 3, cudaMemcpyDeviceToHost);
