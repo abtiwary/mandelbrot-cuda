@@ -10,6 +10,11 @@
 #include <stdlib.h>
 #include <sys/types.h>
 
+typedef enum _setType {
+    MANDELBROT = 0,
+    JULIA = 1
+} SetType;
+
 // a structure to represent a complex number
 typedef struct _complex {
     float re;
@@ -65,7 +70,7 @@ void get_color(int t, uint8_t* r, uint8_t* g, uint8_t* b) {
 }
 
 __global__
-void mandelbrot(uint8_t* device_image, int width, int height, int max_iters, float scale) {
+void mandelbrot(uint8_t* device_image, int width, int height, int max_iters, float scale, SetType set_type) {
     int x = threadIdx.x + blockIdx.x*blockDim.x;
     int y = threadIdx.y + blockIdx.y*blockDim.y;
 
@@ -78,9 +83,16 @@ void mandelbrot(uint8_t* device_image, int width, int height, int max_iters, flo
         uint8_t r;
         uint8_t g;
         uint8_t b;
-
-        Complex c = {scaled_x, scaled_y};
-        Complex z = {0.0, 0.0};
+        
+        Complex c;
+        Complex z;
+        if (set_type == SetType::JULIA) {
+            z = {scaled_x + 1.05f, scaled_y};
+            c = {-0.8, 0.16};
+        } else {
+            c = {scaled_x, scaled_y};
+            z = {0.0, 0.0};
+        }
 
         int i = 0;
         while (i < max_iters && complex_magnitude(&z) < 32.0f) {
@@ -90,7 +102,7 @@ void mandelbrot(uint8_t* device_image, int width, int height, int max_iters, flo
             i += 1;
         }
         
-        float t = (float)i - logf(logf(complex_magnitude(&z)));
+        float t = (float)i - __logf(__logf(complex_magnitude(&z)));
 
         get_color((int)t, &r, &g, &b);
 
@@ -100,49 +112,20 @@ void mandelbrot(uint8_t* device_image, int width, int height, int max_iters, flo
     }
 }
 
-__global__
-void julia(uint8_t* device_image, int width, int height, int max_iters, float scale) {
-    int x = threadIdx.x + blockIdx.x*blockDim.x;
-    int y = threadIdx.y + blockIdx.y*blockDim.y;
-
-    float scaled_x = scale * (float)(height/2.0f - (float)x)/(height/2.0f);
-    float scaled_y = scale * (float)(height/2.0f - (float)y)/(height/2.0f);
-
-    int index = (y * width + x) * 3;
-
-    if (x < width && y < height) {
-        uint8_t r;
-        uint8_t g;
-        uint8_t b;
-
-        Complex z = {scaled_x + 1.05f, scaled_y};
-        Complex c = {-0.8, 0.16};
-
-        int i = 0;
-        while (i < max_iters && complex_magnitude(&z) < 32.0f) {
-            Complex zsq;
-            complex_multiply(&z, &z, &zsq);
-            complex_add(&zsq, &c, &z);
-            i += 1;
-        }
-        
-        float t = (float)i - logf(logf(complex_magnitude(&z)));
-
-        get_color((int)t, &r, &g, &b);
-
-        device_image[index] = r; 
-        device_image[index + 1] = g;
-        device_image[index + 2] = b; 
-    }
-}
 
 int main() {
     const int width = 1920;
     const int height = 1080;
     const int max_iterations = 255;
 
-    const float mandelbrot_scale = 0.95;
-    //const float julia_scale = 1.15;
+    //SetType set_type = SetType::MANDELBROT;
+    SetType set_type = SetType::JULIA;
+    float scale;
+    if (set_type == SetType::JULIA) {
+        scale = 1.15;
+    } else if(set_type == SetType::MANDELBROT) {
+        scale = 0.95;
+    }
 
     uint8_t* host_img = (uint8_t*)malloc(width * height * 3);
     if (!host_img) {
@@ -156,14 +139,24 @@ int main() {
     dim3 blocks(32, 32); // max 1024 threads per block on my setup
     dim3 grid(ceil((float)width / 32), ceil((float)height / 32));
 
-    mandelbrot<<<grid, blocks>>>(device_img, width, height, max_iterations, mandelbrot_scale);
-    //julia<<<grid, blocks>>>(device_img, width, height, max_iterations, julia_scale);
+    if (set_type == SetType::JULIA) {
+        mandelbrot<<<grid, blocks>>>(device_img, width, height, max_iterations, scale, set_type);
+    } else {
+        mandelbrot<<<grid, blocks>>>(device_img, width, height, max_iterations, scale, set_type);
+    }
+
     cudaDeviceSynchronize();
 
     cudaMemcpy(host_img, device_img, width * height * 3, cudaMemcpyDeviceToHost);
     
     // write an output image
-    FILE* outfile = fopen("/home/pimeson/temp/mandelbrot_cuda.ppm", "w+");
+    FILE* outfile = NULL;
+    if (set_type == SetType::JULIA) {
+        outfile = fopen("/home/pimeson/temp/julia_cuda.ppm", "w+");
+    } else {
+        outfile = fopen("/home/pimeson/temp/mandelbrot_cuda.ppm", "w+");
+    }
+
     fprintf(outfile, "P6\n%d %d\n255\n", width, height);
     fwrite(host_img, width * height * 3, sizeof(uint8_t), outfile); 
     fclose(outfile);
